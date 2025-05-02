@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Shot Timing Practice</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      margin-top: 60px;
+      background-color: #d1d1d1;
+    }
+    button {
+      font-size: 18px;
+      padding: 12px 24px;
+      margin: 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    #startBtn { background-color: #4CAF50; color: white; }
+    #stopBtn { background-color: #f44336; color: white; }
+    #result { margin-top: 20px; font-size: 22px; }
+
+    #glassContainer {
+      width: 210px;
+      height: 450px;
+      margin: 40px auto 10px;
+      position: relative;
+    }
+
+  </style>
+</head>
+<body>
+
+  <h1>Shot Timing Practice</h1>
+  <p>Try to pour a 1.5oz shot! (Target: 1 second)</p>
+
+  <div id="glassContainer"></div>
+
+  <button id="startBtn">Start Pour</button>
+  <button id="stopBtn" disabled hidden>Stop Pour</button>
+
+  <div id="result"></div>
+  <div id="score">Perfect Pours: <span id="perfectCount">0</span></div>
+  <div id="averages">Averages - Cylinder: <span id="avgCyl">0.00</span>s, Wide Cylinder: <span id="avgWideCyl">0.00</span>s, Cone: <span id="avgCone">0.00</span>s</div>
+
+  <div id="history">
+    <h3>Pour History</h3>
+    <div id="historyEntries"></div>
+  </div>
+
+  <script>
+    let startTime, endTime, animationInterval;
+    const targetTime = 1.0; // seconds
+    const glassContainer = document.getElementById('glassContainer');
+    const result = document.getElementById('result');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const perfectCountEl = document.getElementById('perfectCount');
+    const avgCylEl = document.getElementById('avgCyl');
+    const avgWideCylEl = document.getElementById('avgWideCyl');
+    const avgConeEl = document.getElementById('avgCone');
+    const historyEntries = document.getElementById('historyEntries');
+
+    let fillElement = null;
+    let maxFillHeight = 200;
+    let pourHistory = [];
+
+    let currentShape = '';
+
+    function createSVGGlass() {
+      glassContainer.innerHTML = '';
+
+      const isCone = Math.random() < 0.333;
+      if (isCone) {
+        currentShape = 'Cone';
+        glassContainer.innerHTML = `
+        <svg viewBox="0 0 200 400">
+          <!-- Cone outline -->
+          <polygon points="13.4,100 186.6,100 100,300" stroke="#333" stroke-width="2" fill="none"/>
+          <!-- Fill -->
+          <polygon id="fill" points="13.4,100 186.6,100 100,300" fill="#c1684f" style="transform: scale(0); transform-origin: 100px 300px;" />
+          </svg>
+          `;
+        } else {
+        const isWide = Math.random() < 0.5;
+        if (!isWide) {
+          currentShape = 'Cylinder';
+          glassContainer.innerHTML = `
+            <svg viewBox="0 0 200 400">
+              <rect x="50" y="100" width="100" height="200" stroke="#333" stroke-width="2" fill="none"/>
+              <rect id="fill" x="50" y="100" width="100" height="0" fill="#c1684f"/>
+            </svg>
+          `;
+        } else {
+          currentShape = 'Wide Cylinder';
+          glassContainer.innerHTML = `
+            <svg viewBox="0 0 200 400">
+              <rect x="13.4" y="100" width="173.2" height="66.7" stroke="#333" stroke-width="2" fill="none"/>
+              <rect id="fill" x="13.4" y="100" width="173.2" height="66.7" height="0" fill="#c1684f"/>
+            </svg>
+          `;
+        }
+      }
+
+      fillElement = document.getElementById('fill');
+    }
+
+    function updateHistoryDisplay() {
+      historyEntries.innerHTML = '';
+      pourHistory.forEach((entry, index) => {
+        const div = document.createElement('div');
+        div.className = 'history-entry';
+        div.textContent = `#${index + 1} - ${entry.shape}: ${entry.time}s → ${entry.result}`;
+        historyEntries.appendChild(div);
+      });
+    }
+
+    function updateAverages() {
+      const cyls = pourHistory.filter(e => e.shape === 'Cylinder');
+      const wideCyls = pourHistory.filter(e => e.shape === 'Wide Cylinder');
+      const cones = pourHistory.filter(e => e.shape === 'Cone');
+
+      const avg = arr => arr.length ? (arr.reduce((sum, e) => sum + parseFloat(e.time), 0) / arr.length).toFixed(2) : '0.00';
+
+      avgCylEl.textContent = avg(cyls);
+      avgWideCylEl.textContent = avg(wideCyls);
+      avgConeEl.textContent = avg(cones);
+    }
+
+    startBtn.onclick = () => {
+      createSVGGlass();
+      startTime = new Date().getTime();
+      result.textContent = '';
+      startBtn.hidden = true;
+      startBtn.disabled = true;
+      stopBtn.hidden = false;
+      stopBtn.disabled = false;
+
+      animationInterval = setInterval(() => {
+        let elapsed = (new Date().getTime() - startTime) / 1000;
+        let progress = elapsed / targetTime;
+
+        if (currentShape === 'Cylinder') {
+          let fillHeight = progress * (maxFillHeight);
+          fillElement.setAttribute('height', fillHeight);
+          fillElement.setAttribute('y', 100 + maxFillHeight - fillHeight);
+        } else if (currentShape === 'Wide Cylinder') {
+          let fillHeight = progress * (maxFillHeight / 3);
+          fillElement.setAttribute('height', fillHeight);
+          fillElement.setAttribute('y', 100 + maxFillHeight / 3 - fillHeight);
+        } else if (currentShape === 'Cone') {
+          // cylinder: V = π * r * r * h
+          let liquidVolumeOverPi = 50 * 50 * (200 * progress)
+
+          // cone: V = ​π * r * r * h / 3
+          //
+          // we have r / h = 3^0.5 / 4    -->  r = h * 3^0.5 / 4
+          //
+          // so:                          V = ​π * h^3 / 16
+          //     50 * 50 * (200 * progress) = h^3 / 16
+          let coneHeight = Math.pow(16 * liquidVolumeOverPi, 1/3)
+
+          let coneProgress = coneHeight / maxFillHeight;
+          fillElement.style.transform = `scale(${coneProgress})`;
+        }
+      }, 1);
+    };
+
+    stopBtn.onclick = () => {
+      endTime = new Date().getTime();
+      clearInterval(animationInterval);
+
+      const duration = ((endTime - startTime) / 1000).toFixed(3);
+      const diff = (duration - targetTime).toFixed(3);
+
+      let feedback = '';
+      let isPerfect = Math.abs(diff) < 0.05;
+
+      if (isPerfect) {
+        feedback = "✅ Perfect pour!";
+      } else if (diff > 0) {
+        feedback = `📈 Over by ${diff} sec.`;
+      } else {
+        feedback = `📉 Under by ${Math.abs(diff)} sec.`;
+      }
+
+      result.textContent = `You poured for ${duration} seconds. ${feedback}`;
+
+      pourHistory.push({
+        shape: currentShape,
+        time: duration,
+        result: feedback
+      });
+
+      updateHistoryDisplay();
+      updateAverages();
+
+      startBtn.hidden = false;
+      startBtn.disabled = false;
+      stopBtn.hidden = true;
+      stopBtn.disabled = true;
+    };
+  </script>
+
+</body>
+</html>
